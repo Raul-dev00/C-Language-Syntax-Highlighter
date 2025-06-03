@@ -26,19 +26,19 @@ Bu proje, C dilinde yazılmış kaynak kodunu gerçek zamanlı olarak analiz ede
 - **PyQt5** (GUI için)  
 
 # Kullanım
-  1. Kod Düzenleyici
-    - Açılan pencerede ortada bir metin düzenleyici bulunur.
-    - Buraya C kodunuzu yazın veya yapıştırın.
-  2. Gerçek Zamanlı Vurgulama
-    - Düzenleyicide metin her değiştiğinde, sözdizimi vurgulaması otomatik güncellenir.
-    - Anahtar kelimeler kırmızı, sayılar mavi, metinler magenta, operatörler turuncu, yorumlar yeşil italik şeklinde gösterilir.
- 3.  Status Bar (Hata Mesajı)
-    - Kodda sözdizimi hatası varsa, alt kısımdaki status bar kırmızı uyarı mesajı görüntüler.
-    - Hata mesajı “Line X, Col Y: Missing ‘;’” gibi formatta bilgi verir.
-    - Hata yoksa “No syntax errors” mesajı çıkar.
-  4. Token Listesi (Lexical Analiz)
-    - Kodun token’larını görmek isterseniz, parseTree.py’daki tokenize fonksiyonunu doğrudan kullanın.
-    - Örneğin, main.py içinde aşağıdaki satırı ekleyerek token listesi konsola yazdırılabilir: print(tokenize(code))
+  1. **Kod Düzenleyici**
+     - Açılan pencerede ortada bir metin düzenleyici bulunur.
+     - Buraya C kodunuzu yazın veya yapıştırın.
+  2. **Gerçek Zamanlı Vurgulama**
+     - Düzenleyicide metin her değiştiğinde, sözdizimi vurgulaması otomatik güncellenir.
+     - Anahtar kelimeler kırmızı, sayılar mavi, metinler magenta, operatörler turuncu, yorumlar yeşil italik şeklinde gösterilir.
+ 3.  **Status Bar (Hata Mesajı)**
+     - Kodda sözdizimi hatası varsa, alt kısımdaki status bar kırmızı uyarı mesajı görüntüler.
+     - Hata mesajı “Line X, Col Y: Missing ‘;’” gibi formatta bilgi verir.
+     - Hata yoksa “No syntax errors” mesajı çıkar.
+  4. **Token Listesi (Lexical Analiz)**
+     - Kodun token’larını görmek isterseniz, parseTree.py’daki tokenize fonksiyonunu doğrudan kullanın.
+     - Örneğin, main.py içinde aşağıdaki satırı ekleyerek token listesi konsola yazdırılabilir: print(tokenize(code))
 
 # Örnek Kod
 

@@ -99,7 +99,7 @@ class Token:
 - `line`: O token’ın yer aldığı satır numarası.
 - `column`: Satır başından kaçıncı karakterde başladığı.
 
-##Fonksiyon `tokenize()` 
+## Fonksiyon ```tokenize()``` 
 `parseTree.py` içinde, gelen C kodunu regex tabanlı olarak tarayıp bir `Token` listesi döndürür:
 ```
 _TOKEN_REGEX = re.compile(

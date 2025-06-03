@@ -1,5 +1,3 @@
-# CLanguageSyntaxHighlighter.py
-
 from PyQt5.QtGui import (
     QTextCursor,
     QTextCharFormat,

@@ -526,4 +526,180 @@ primary             ::= IDENTIFIER | NUMBER | HEXNUMBER | STRING_LITERAL | CHAR_
 | **Operatörler**                 | \`(?:==                                                           | !=                 | <=      | >= | ++   | --    | +=  | -=     | \*=    | /=    | &&           | \|\|           | << | >> | -> | \[+-\*/%<>&^ | =\~!?:])\` | Koyu Turuncu |
 | **Ayraçlar**                    | `[;,()\[\]\{\}]`                                                  | Koyu Turuncu       |         |    |      |       |     |        |        |       |              |                |    |    |    |              |            |              |
 ```
+## ``CSyntaxHighlighter`` Sınıfı
+```
+class CSyntaxHighlighter(QSyntaxHighlighter):
+    def __init__(self, document):
+        super().__init__(document)
+        self.rules = []
 
+        # 1) Identifiers → Siyah
+        id_fmt = QTextCharFormat()
+        id_fmt.setForeground(QColor("black"))
+        pattern_id = QRegularExpression(r"\b[A-Za-z_][A-Za-z0-9_]*\b")
+        self.rules.append((pattern_id, id_fmt))
+
+        # 2) Keywords → Kırmızı, Kalın
+        kw_fmt = QTextCharFormat()
+        kw_fmt.setForeground(QColor("red"))
+        kw_fmt.setFontWeight(QFont.Bold)
+        kws = ["int", "char", "void", "if", "else", "while", "for", "return", "struct", "union", "typedef"]
+        pattern_kw = QRegularExpression(r"\b(" + "|".join(kws) + r")\b")
+        self.rules.append((pattern_kw, kw_fmt))
+
+        # 3) Preprocessor Direktifleri → Koyu Mavi
+        pp_fmt = QTextCharFormat()
+        pp_fmt.setForeground(QColor("#000080"))
+        pp_pattern = QRegularExpression(r"^\s*#.*$", QRegularExpression.MultilineOption)
+        self.rules.append((pp_pattern, pp_fmt))
+
+        # 4) Tek Satır Yorum (“//…”) → Koyu Yeşil İtalik
+        comment1_fmt = QTextCharFormat()
+        comment1_fmt.setForeground(QColor("#006400"))
+        comment1_fmt.setFontItalic(True)
+        pattern1 = QRegularExpression(r"//[^\n]*")
+        self.rules.append((pattern1, comment1_fmt))
+
+        # 5) Çok Satırlı Yorum (“/*…*/”) — highlightBlock içinde işlenecek
+        self.comment2_fmt = QTextCharFormat()
+        self.comment2_fmt.setForeground(QColor("#006400"))
+        self.comment2_fmt.setFontItalic(True)
+        self.comment2_start = QRegularExpression(r"/\*")
+        self.comment2_end = QRegularExpression(r"\*/")
+
+        # 6) String Literal → Magenta
+        string_fmt = QTextCharFormat()
+        string_fmt.setForeground(QColor("magenta"))
+        pattern_str = QRegularExpression(r"\"(?:\\.|[^\"\\])*\"")
+        self.rules.append((pattern_str, string_fmt))
+
+        # 7) Char Literal → Magenta
+        char_fmt = QTextCharFormat()
+        char_fmt.setForeground(QColor("magenta"))
+        pattern_ch = QRegularExpression(r"'(?:\\.|[^'\\])*'")
+        self.rules.append((pattern_ch, char_fmt))
+
+        # 8) Ondalık Sayılar → Mavi
+        num_fmt = QTextCharFormat()
+        num_fmt.setForeground(QColor("blue"))
+        pattern_num = QRegularExpression(r"\b[0-9]+(?:\.[0-9]*)?(?:[eE][+-]?[0-9]+)?\b")
+        self.rules.append((pattern_num, num_fmt))
+
+        # 9) Onaltılık Sayılar → Mavi
+        hex_fmt = QTextCharFormat()
+        hex_fmt.setForeground(QColor("blue"))
+        pattern_hex = QRegularExpression(r"\b0[xX][0-9A-Fa-f]+\b")
+        self.rules.append((pattern_hex, hex_fmt))
+
+        # 10) Operatörler → Koyu Turuncu
+        op_fmt = QTextCharFormat()
+        op_fmt.setForeground(QColor("#8B4500"))
+        ops = [
+            r"==", r"!=", r"<=", r">=", r"\+\+", r"--", r"\+=", r"-=", r"\*=", r"/=", r"&&", r"\|\|",
+            r"<<", r">>", r"->",                       # Çok karakterli operatörler
+            r"[+\-*/%<>&\^|=~!?:]"                     # Tek karakterli operatörler ve ?: 
+        ]
+        pattern_op = QRegularExpression("(" + "|".join(ops) + ")")
+        self.rules.append((pattern_op, op_fmt))
+
+        # 11) Ayraçlar → Koyu Turuncu
+        sep_fmt = QTextCharFormat()
+        sep_fmt.setForeground(QColor("#8B4500"))
+        pattern_sep = QRegularExpression(r"[;,()\[\]\{\}]")
+        self.rules.append((pattern_sep, sep_fmt))
+```
+## Vurgu İşleyişi
+``highlightBlock(self, text: str)`` metodu her satır için şu adımları izler:
+1) Önce self.rules içinde tanımlı ``(regex, format)`` çiftlerini sırayla uygular:
+   ```
+      for regex, fmt in self.rules:
+    it = regex.globalMatch(text)
+    while it.hasNext():
+        match = it.next()
+        start = match.capturedStart()
+        length = match.capturedLength()
+        self.setFormat(start, length, fmt)
+   ```
+2) Çok Satırlı Yorumlar (``/* … */``) için blok durumunu takip eder:
+   - ``setCurrentBlockState(0)`` ile başlar.
+   - Eğer önceki blok ``1`` durumundaysa hâlâ yorum içindedir.
+   - ``self.comment2_start.match(text)`` ile ``/*`` arar. Bulursa ``start_idx`` elde edilir.
+   - ``self.comment2_end.match(text, start_idx)`` ile ``*/`` aranır.
+      - ``*/`` bulursa: ``start_idx`` ile ``end`` aralığını ``self.comment2_fmt`` ile renklendirir ve sıradaki ``/*`` aranır.
+      - ``*/`` bulunamazsa: satır sonuna kadar ``self.comment2_fmt`` uygulanır ve ``setCurrentBlockState(1)`` ile bir sonraki satırın da yorum içinde başlaması sağlanır.
+# GUI Entegrasyonu
+## Ana Pencere: ``Highlighter``
+``uygulama_arayuz_kod.py`` içinde, ``Highlighter`` sınıfı ``QMainWindow``’dan türetilmiştir:
+```
+class Highlighter(QMainWindow):
+    def __init__(self) -> None:
+        super().__init__()
+        self.window = Ui_MainWindow()    # uygulama_arayuz.py’de tanımlı UI
+        self.window.setupUi(self)
+
+        # 1) QTextEdit’in document’ına CSyntaxHighlighter bağlanır
+        self.highlighter = CSyntaxHighlighter(self.window.textEdit.document())
+
+        # 2) Metin her değiştiğinde on_text_changed() çağrılır
+        self.window.textEdit.textChanged.connect(self.on_text_changed)
+```
+### ``Ui_MainWindow`` İçeriği
+``uygulama_arayuz.py`` PyQt5 Designer tarafından oluşturulmuş haliyle şu öğeleri içerir:
+   - ``QTextEdit textEdit`` → Kod düzenleyici alanı
+   - ``QStatusBar statusbar`` → Hata mesajlarını göstermek için
+## Metin Değişiklikleri ve Parser Çağrısı
+Her metin yazımı veya düzenlemesi sonrası ``on_text_changed()`` tetiklenir:
+```
+def on_text_changed(self):
+    code = self.window.textEdit.toPlainText()
+    # 1) Lexical analiz: tokenize
+    tokens = tokenize(code)
+    # 2) Parser: sözdizimi analizi
+    parser = Parser(tokens)
+    errors = parser.parse()
+
+    # Hata kontrolü
+    if errors:
+        msgs = []
+        for line, col, msg in errors:
+            msgs.append(f"Line {line}, Col {col}: {msg}")
+        self.window.statusbar.showMessage(" | ".join(msgs))
+    else:
+        self.window.statusbar.showMessage("No syntax errors")
+```
+   - ``tokenize(code)`` ile kodu token’lara ayırır.
+   - ``Parser(tokens).parse()`` ile varsa sözdizimi hatalarını toplar.
+   - Eğer ``errors`` listesi boş değilse, status bar’da hata mesajlarını birleştirerek gösterir; değilse “No syntax errors” mesajı çıkar.
+# Örnek Kullanım
+## Basit Örnek
+``Highlighter`` penceresini açtıktan sonra aşağıdaki kodu metin düzenleyiciye yapıştırın:
+```
+// Merhaba Dünya örneği
+int main() {
+    printf("Hello, World!\n");
+    return 0;
+}
+```
+- Syntax Vurgulama:
+   - ``int``, ``return`` → kırmızı ve kalın
+   - ``main``, ``printf`` → siyah
+   - ``"Hello, World!\n"`` → magenta
+   - ``;`` → turuncu
+   - ``// Merhaba Dünya örneği`` → yeşil itali
+- Hata Yok:
+   - Status bar “No syntax errors” gösterir.
+   - 
+# Hata Senaryosu
+Aşağıdaki örnek, eksik noktalı virgül durumu:
+```
+int main() {
+    int x = 10   // noktalı virgül eksik
+    return x;
+}
+```
+   - ``int x = 10 // noktalı virgül eksik`` satırı vurgulandıktan sonra parse aşamasında,
+``parse_declaration`` metodu ``;`` beklediğinde hata yakalar:
+   ```
+      Line 2, Col 15: Missing ';' at end of declaration
+   ```
+   - Status bar’da kırmızı uyarı mesajı görünür.

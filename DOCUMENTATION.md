@@ -30,6 +30,28 @@ Ana Python dosyaları:
 - Python 3.8 veya üzeri  
 - PyQt5  
 
+## Proje Dosya Yapısı
 PyQt5 yüklü değilse, terminalde şu komutu çalıştırın:
 ```bash
 pip install PyQt5
+
+Project-PD/
+│
+├── main.py                     # Uygulamayı başlatan Python betiği
+│
+├── parseTree.py                # Lexer & Parser işlevleri
+│
+├── uygulama_arayuz.py          # PyQt5 Designer’dan çıkmış UI tanımı
+│
+└── uygulama_arayuz_kod.py      # GUI mantığı, SyntaxHighlighter, parser entegrasyonu
+```
+## Çalıştırma Adımları
+ - GitHub deposunu klonlayın veya indirin:
+  `git clone https://github.com/Raul-dev00/Project-PD.git
+cd Project-PD`
+ - (Opsiyonel) Sanal ortam oluşturun ve aktif edin:
+   ```python3 -m venv venv
+source venv/bin/activate    # macOS/Linux
+# venv\Scripts\activate     # Windows
+```
+

@@ -408,7 +408,7 @@ primary             ::= IDENTIFIER | NUMBER | HEXNUMBER | STRING_LITERAL | CHAR_
             self.errors.append((tok.line, tok.column, "Missing '(' after 'for'"))
             self.pos += 1
     ```
-    - ``parse_return_statement()``
+  - ``parse_return_statement()``
       ```
       def parse_return_statement(self):
        self.eat("KEYWORD", "return")
@@ -421,7 +421,7 @@ primary             ::= IDENTIFIER | NUMBER | HEXNUMBER | STRING_LITERAL | CHAR_
            self.errors.append((tok.line, tok.column, "Missing ';' after return"))
            self.pos += 1
       ```
-    - ``parse_expression_statement()`` ve alt dallar
+  - ``parse_expression_statement()`` ve alt dallar
       ```
          def parse_expression_statement(self):
           if not (self.current().type == "SEPARATOR" and self.current().value == ";"):

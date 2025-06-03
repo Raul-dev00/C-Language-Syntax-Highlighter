@@ -43,18 +43,13 @@ Bu proje, C dilinde yazılmış kaynak kodunu gerçek zamanlı olarak analiz ede
 
 # Proje Yapısı
 
-Project-PD/
-│
-├── README.md                   # Bu dosya: Projeyi yüzeysel tanıtıyor
-├── documentation.md            # (Varsa) Daha detaylı teknik dokümantasyon
-│
-├── main.py                     # Uygulamayı başlatan Python betiği
-│
-├── parseTree.py                # Tokenizer & Basit parser (hata tespiti)
-│
-├── uygulama_arayuz.py          # PyQt5 Designer ile oluşturulmuş UI tanımı
-│
-└── uygulama_arayuz_kod.py      # UI mantığı, CSyntaxHighlighter, tokenize & parse entegrasyonu
+**Project-PD/**
+- README.md                   # Bu dosya: Projeyi yüzeysel tanıtıyor
+- documentation.md            # (Varsa) Daha detaylı teknik dokümantasyon
+- main.py                     # Uygulamayı başlatan Python betiği
+- parseTree.py                # Tokenizer & Basit parser (hata tespiti)
+- uygulama_arayuz.py          # PyQt5 Designer ile oluşturulmuş UI tanımı
+- uygulama_arayuz_kod.py      # UI mantığı, CSyntaxHighlighter, tokenize & parse entegrasyonu
 
 
 # Örnek Kod

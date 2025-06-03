@@ -133,3 +133,397 @@ _TOKEN_REGEX = re.compile(
                           re.MULTILINE)
    ```
 3) İterasyon: ``finditer`` ile kodu baştan sona tarar:
+   ```
+   for mo in _TOKEN_REGEX.finditer(code):
+    kind = mo.lastgroup
+    value = mo.group(kind)
+    start_pos = mo.start()
+    # SKIP: boşluk, tab, newline ise satır-update, ama token ekleme
+    # COMMENT2_START: çok satırlı yorum olup olmadığını kontrol et
+    # MISMATCH: bilinmeyen karakter → UNKNOWN token
+    # Diğer türler: normal token listesine ekle
+   ```
+4) Çok Satırlı Yorum İşleme: Eğer ``COMMENT2_START`` (``/*``) yakalanırsa, ``*/`` kapanışına kadar metni tek bir ``COMMENT2`` token’ı olarak toplar ve iterator’ı ileri kaydırır.
+5) Satır & Kolon Güncelleme:
+   - ``value.count("\n")`` ile satır numarasını günceller.
+   - ``line_start`` değişkeni ile yeni satırın başlangıç indeksi hesaplanır; böylece ``column = start_pos - line_start + 1`` ifadesi ile doğru kolon elde edilir.
+6) Geriye Dönüş: Tamamlanan ``tokens`` listesi döner.
+   ```
+   from parseTree import tokenize
+
+   code = """
+   int main() {
+       // Basit bir örnek
+       int x = 5;
+       return x;
+   }
+   """
+   tokens = tokenize(code)
+   for tok in tokens:
+       print(tok)
+   ```
+# Parser (Sözdizimi Analizi)
+## Gramer ve Kısıtlamalar: 
+- Bu parser, C dilinin tamamını değil, temel yapı taşlarını ele alan basitleştirilmiş bir gramer kullanır. Temel kurallar:
+```
+program             ::= ( declaration | function_def )*
+declaration         ::= type_spec IDENTIFIER ("[" NUMBER "]")* ( "=" expression )? ";" 
+function_def        ::= type_spec IDENTIFIER "(" params ")" compound_stmt
+params              ::= ( param ("," param)* )?
+param               ::= type_spec IDENTIFIER
+type_spec           ::= "int" | "char" | "void"
+compound_stmt       ::= "{" statement* "}"
+statement           ::= expr_stmt | compound_stmt | selection_stmt | iteration_stmt | return_stmt
+expr_stmt           ::= ( expression )? ";"
+selection_stmt      ::= "if" "(" expression ")" statement ( "else" statement )?
+iteration_stmt      ::= "while" "(" expression ")" statement 
+                       | "for" "(" expr_stmt expr_stmt ( expression )? ")" statement
+return_stmt         ::= "return" ( expression )? ";"
+expression          ::= assignment
+assignment          ::= logical_or ( ( "=" | "+=" | "-=" | "*=" | "/=" ) logical_or )?
+logical_or          ::= logical_and ( "||" logical_and )*
+logical_and         ::= equality ( "&&" equality )*
+equality            ::= relational ( ( "==" | "!=" ) relational )*
+relational          ::= additive ( ( "<" | ">" | "<=" | ">=" ) additive )*
+additive            ::= multiplicative ( ( "+" | "-" ) multiplicative )*
+multiplicative      ::= unary ( ( "*" | "/" | "%" ) unary )*
+unary               ::= ( "+" | "-" | "!" ) unary | primary
+primary             ::= IDENTIFIER | NUMBER | HEXNUMBER | STRING_LITERAL | CHAR_LITERAL | "(" expression ")"
+```
+## Parser Sınıfı Yapısı
+- ``parseTree.py`` içindeki ``Parser`` sınıfı, yukarıdaki gramer kurallarını recursive-descent (önce üst, sonra alt) mantığıyla ayrıştırır. Ana bileşenler:
+  ```
+   class Parser:
+    def __init__(self, tokens: List[Token]):
+        self.tokens = tokens     # Token listesi
+        self.pos = 0             # Geçerli token indeksi
+        self.errors: List[Tuple[int, int, str]] = []  # (satır, kolon, mesaj)
+
+    def current(self) -> Token:
+        # Eğer pos dizinini aşarsa, sanal bir EOF token döndürür
+        if self.pos < len(self.tokens):
+            return self.tokens[self.pos]
+        last = self.tokens[-1] if self.tokens else Token("EOF", "", 0, 1, 1)
+        return Token("EOF", "", last.position + len(last.value), last.line, last.column)
+
+    def eat(self, expected_type: str, expected_val: str = None) -> Token:
+        # Beklenen tür ve değer geliyorsa ilerle; gelmezse hata kaydet
+        tok = self.current()
+        if tok.type == expected_type and (expected_val is None or tok.value == expected_val):
+            self.pos += 1
+            return tok
+        else:
+            msg = f"Expected {expected_type}"
+            if expected_val:
+                msg += f"('{expected_val}')"
+            msg += f" but found '{tok.value}'"
+            self.errors.append((tok.line, tok.column, msg))
+            self.pos += 1
+            return tok
+
+    def parse(self) -> List[Tuple[int, int, str]]:
+        # program ::= ( declaration | function_def )*
+        while self.pos < len(self.tokens):
+            tok = self.current()
+            if tok.type == "KEYWORD" and tok.value in ("int", "char", "void"):
+                self.parse_declaration_or_function()
+            else:
+                self.errors.append((tok.line, tok.column, f"Unexpected token '{tok.value}'"))
+                self.pos += 1
+        return self.errors
+  ```
+  - ``parse_declaration_or_function()``
+    ```
+      def parse_declaration_or_function(self):
+       # type_spec (int/char/void)
+       self.eat("KEYWORD")
+       # identifier (değişken ya da fonksiyon adı)
+       self.eat("IDENTIFIER")
+       # Eğer '(' geliyorsa function definition, aksi halde declaration
+       if self.current().type == "SEPARATOR" and self.current().value == "(":
+           self.parse_function_definition()
+       else:
+           self.parse_declaration()
+    ```
+  - ``parse_declaration()``
+    ```
+      def parse_declaration(self):
+       # Dizi bildirimi olabilir: IDENTIFIER [ NUMBER ]*
+       while self.current().type == "SEPARATOR" and self.current().value == "[":
+           self.eat("SEPARATOR", "[")
+           self.eat("NUMBER")
+           if self.current().type == "SEPARATOR" and self.current().value == "]":
+               self.eat("SEPARATOR", "]")
+           else:
+               tok = self.current()
+               self.errors.append((tok.line, tok.column, "Missing ']' in array declaration"))
+               self.pos += 1
+       # Atama operatörü olabilir
+       if self.current().type == "OP" and self.current().value in ("=", "+=", "-=", "*=", "/="):
+           self.eat("OP")
+           self.parse_expression()
+       # Son olarak noktalı virgül
+       if self.current().type == "SEPARATOR" and self.current().value == ";":
+           self.eat("SEPARATOR", ";")
+       else:
+           tok = self.current()
+           self.errors.append((tok.line, tok.column, "Missing ';' at end of declaration"))
+           self.pos += 1
+    ```
+  - ``parse_function_definition()``
+    ```
+      def parse_function_definition(self):
+    # '('
+    self.eat("SEPARATOR", "(")
+    self.parse_params()
+    if self.current().type == "SEPARATOR" and self.current().value == ")":
+        self.eat("SEPARATOR", ")")
+    else:
+        tok = self.current()
+        self.errors.append((tok.line, tok.column, "Missing ')' after function parameters"))
+        self.pos += 1
+    # compound_stmt: { statement* }
+    self.parse_compound_statement()
+    ```
+  - ``parse_params()``
+    ```
+      def parse_params(self):
+    # Eğer hızlıca ')' gelirse parametre yok
+    if self.current().type == "SEPARATOR" and self.current().value == ")":
+        return
+    # Parametre: type_spec IDENTIFIER
+    if self.current().type == "KEYWORD":
+        self.eat("KEYWORD")
+        self.eat("IDENTIFIER")
+    else:
+        tok = self.current()
+        self.errors.append((tok.line, tok.column, "Invalid parameter declaration"))
+        self.pos += 1
+    # Birden fazla parametre varsa virgülle ayrılır
+    while self.current().type == "SEPARATOR" and self.current().value == ",":
+        self.eat("SEPARATOR", ",")
+        if self.current().type == "KEYWORD":
+            self.eat("KEYWORD")
+            self.eat("IDENTIFIER")
+        else:
+            tok = self.current()
+            self.errors.append((tok.line, tok.column, "Invalid parameter declaration"))
+            self.pos += 1
+    ```
+  - ``parse_compound_statement()``
+    ```
+      def parse_compound_statement(self):
+    # '{'
+    if self.current().type == "SEPARATOR" and self.current().value == "{":
+        self.eat("SEPARATOR", "{")
+    else:
+        tok = self.current()
+        self.errors.append((tok.line, tok.column, "Missing '{' at start of block"))
+        self.pos += 1
+        return
+    # İçerideki statement'ları işle
+    while not (self.current().type == "SEPARATOR" and self.current().value == "}"):
+        if self.current().type == "EOF":
+            self.errors.append((self.current().line, self.current().column, "Unclosed '{'"))
+            return
+        self.parse_statement()
+    # '}'
+    self.eat("SEPARATOR", "}")
+    ```
+  - ``parse_statement()`` ve alt tipleri
+    ```
+      def parse_statement(self):
+    tok = self.current()
+    if tok.type == "SEPARATOR" and tok.value == "{":
+        self.parse_compound_statement()
+    elif tok.type == "KEYWORD" and tok.value == "if":
+        self.parse_selection_statement()
+    elif tok.type == "KEYWORD" and tok.value in ("while", "for"):
+        self.parse_iteration_statement()
+    elif tok.type == "KEYWORD" and tok.value == "return":
+        self.parse_return_statement()
+    else:
+        self.parse_expression_statement()
+    ```
+  - ``parse_selection_statement()``
+    ```
+      def parse_selection_statement(self):
+    self.eat("KEYWORD", "if")
+    if self.current().type == "SEPARATOR" and self.current().value == "(":
+        self.eat("SEPARATOR", "(")
+        self.parse_expression()
+        if self.current().type == "SEPARATOR" and self.current().value == ")":
+            self.eat("SEPARATOR", ")")
+        else:
+            tok = self.current()
+            self.errors.append((tok.line, tok.column, "Missing ')' after if condition"))
+            self.pos += 1
+    else:
+        tok = self.current()
+        self.errors.append((tok.line, tok.column, "Missing '(' after 'if'"))
+        self.pos += 1
+    self.parse_statement()
+    if self.current().type == "KEYWORD" and self.current().value == "else":
+        self.eat("KEYWORD", "else")
+        self.parse_statement()
+    ```
+  - ``parse_iteration_statement()``
+    ```
+      def parse_iteration_statement(self):
+    if self.current().value == "while":
+        self.eat("KEYWORD", "while")
+        if self.current().type == "SEPARATOR" and self.current().value == "(":
+            self.eat("SEPARATOR", "(")
+            self.parse_expression()
+            if self.current().type == "SEPARATOR" and self.current().value == ")":
+                self.eat("SEPARATOR", ")")
+            else:
+                tok = self.current()
+                self.errors.append((tok.line, tok.column, "Missing ')' after while condition"))
+                self.pos += 1
+        else:
+            tok = self.current()
+            self.errors.append((tok.line, tok.column, "Missing '(' after 'while'"))
+            self.pos += 1
+        self.parse_statement()
+    else:
+        self.eat("KEYWORD", "for")
+        if self.current().type == "SEPARATOR" and self.current().value == "(":
+            self.eat("SEPARATOR", "(")
+            self.parse_expression_statement()
+            self.parse_expression_statement()
+            if self.current().type == "SEPARATOR" and self.current().value == ")":
+                self.eat("SEPARATOR", ")")
+            else:
+                self.parse_expression()
+                if self.current().type == "SEPARATOR" and self.current().value == ")":
+                    self.eat("SEPARATOR", ")")
+                else:
+                    tok = self.current()
+                    self.errors.append((tok.line, tok.column, "Missing ')' after for clauses"))
+                    self.pos += 1
+            self.parse_statement()
+        else:
+            tok = self.current()
+            self.errors.append((tok.line, tok.column, "Missing '(' after 'for'"))
+            self.pos += 1
+    ```
+    - ``parse_return_statement()``
+      ```
+      def parse_return_statement(self):
+       self.eat("KEYWORD", "return")
+       if not (self.current().type == "SEPARATOR" and self.current().value == ";"):
+           self.parse_expression()
+       if self.current().type == "SEPARATOR" and self.current().value == ";":
+           self.eat("SEPARATOR", ";")
+       else:
+           tok = self.current()
+           self.errors.append((tok.line, tok.column, "Missing ';' after return"))
+           self.pos += 1
+      ```
+    - ``parse_expression_statement()`` ve alt dallar
+      ```
+         def parse_expression_statement(self):
+          if not (self.current().type == "SEPARATOR" and self.current().value == ";"):
+              self.parse_expression()
+          if self.current().type == "SEPARATOR" and self.current().value == ";":
+              self.eat("SEPARATOR", ";")
+          else:
+              tok = self.current()
+              self.errors.append((tok.line, tok.column, "Missing ';' in expression statement"))
+              self.pos += 1
+      
+      def parse_expression(self):
+          self.parse_assignment()
+      
+      def parse_assignment(self):
+          self.parse_logical_or()
+          if self.current().type == "OP" and self.current().value in ("=", "+=", "-=", "*=", "/="):
+              self.eat("OP")
+              self.parse_logical_or()
+      
+      # Aşağıdaki metodlar aynı mantıkla birbiri ardına çağrılır:
+      def parse_logical_or(self):
+          self.parse_logical_and()
+          while self.current().type == "OP" and self.current().value == "||":
+              self.eat("OP")
+              self.parse_logical_and()
+      
+      def parse_logical_and(self):
+          self.parse_equality()
+          while self.current().type == "OP" and self.current().value == "&&":
+              self.eat("OP")
+              self.parse_equality()
+      
+      def parse_equality(self):
+          self.parse_relational()
+          while self.current().type == "OP" and self.current().value in ("==", "!="):
+              self.eat("OP")
+              self.parse_relational()
+      
+      def parse_relational(self):
+          self.parse_additive()
+          while self.current().type == "OP" and self.current().value in ("<", ">", "<=", ">="):
+              self.eat("OP")
+              self.parse_additive()
+      
+      def parse_additive(self):
+          self.parse_multiplicative()
+          while self.current().type == "OP" and self.current().value in ("+", "-"):
+              self.eat("OP")
+              self.parse_multiplicative()
+      
+      def parse_multiplicative(self):
+          self.parse_unary()
+          while self.current().type == "OP" and self.current().value in ("*", "/", "%"):
+              self.eat("OP")
+              self.parse_unary()
+      
+      def parse_unary(self):
+          if self.current().type == "OP" and self.current().value in ("+", "-", "!"):
+              self.eat("OP")
+              self.parse_unary()
+          else:
+              self.parse_primary()
+      
+      def parse_primary(self):
+          tok = self.current()
+          if tok.type in ("IDENTIFIER", "NUMBER", "HEXNUMBER", "STRING_LITERAL", "CHAR_LITERAL"):
+              self.eat(tok.type)
+          elif tok.type == "SEPARATOR" and tok.value == "(":
+              self.eat("SEPARATOR", "(")
+              self.parse_expression()
+              if self.current().type == "SEPARATOR" and self.current().value == ")":
+                  self.eat("SEPARATOR", ")")
+              else:
+                  self.errors.append((tok.line, tok.column, "Missing ')' in expression"))
+                  self.pos += 1
+          else:
+              self.errors.append((tok.line, tok.column, f"Unexpected token '{tok.value}' in expression"))
+              self.pos += 1
+      ```
+## Hata Yönetimi
+   - Beklenen Token Bulunmazsa: ``eat()`` metodu içerisinde bir hata mesajı (``Expected … but found …``) ``self.errors`` listesine eklenir ve parser akışı bir sonraki token’a geçerek devam etmeye çalışır (“panic mode” benzeri).
+   - Eksik Parantez-‘;’-Blok Kapanışı: Gerekli yerlere koşullu olarak hata satırı ve kolonu eklenir; ilerlerken olabildiğince sonraki token’ı okumaya çalışır.
+   - Parse işlemi tamamlandığında ``errors`` listesi, ``(satır, kolon, mesaj)`` üçlüsünden oluşan hatalarla döner. ``Highlighter`` sınıfı bu listeyi alıp status bar’da gösterir.
+---
+
+# Syntax Vurgulayıcı (PyQt5)
+## Token Kuralları ve Regex
+``uygulama_arayuz_kod.py`` içinde, sözdizimi vurgulama için ``CSyntaxHighlighter`` sınıfı kullanılır. Burada her token tipi için bir ``QRegularExpression`` deseni ve ``QTextCharFormat`` stili tanımlanır.
+```
+| Token Kategorisi                | Regex Deseni                                                      | Renk/Stil          |         |    |      |       |     |        |        |       |              |                |    |    |    |              |            |              |
+| ------------------------------- | ----------------------------------------------------------------- | ------------------ | ------- | -- | ---- | ----- | --- | ------ | ------ | ----- | ------------ | -------------- | -- | -- | -- | ------------ | ---------- | ------------ |
+| **Identifiers**                 | `\b[A-Za-z_][A-Za-z0-9_]*\b`                                      | Siyah              |         |    |      |       |     |        |        |       |              |                |    |    |    |              |            |              |
+| **Keywords**                    | \`\b(int                                                          | char               | void    | if | else | while | for | return | struct | union | typedef)\b\` | Kırmızı, Kalın |    |    |    |              |            |              |
+| **Preprocessor Direktifleri**   | `^\s*#.*$` (MultilineOption)                                      | Koyu Mavi          |         |    |      |       |     |        |        |       |              |                |    |    |    |              |            |              |
+| **Tek Satır Yorum (`//…`)**     | `//[^\n]*`                                                        | Koyu Yeşil, İtalik |         |    |      |       |     |        |        |       |              |                |    |    |    |              |            |              |
+| **Çok Satırlı Yorum (`/*…*/`)** | Başlangıç: `/\*`   Bitiş: `\*/` (highlightBlock içinde yönetilir) | Koyu Yeşil, İtalik |         |    |      |       |     |        |        |       |              |                |    |    |    |              |            |              |
+| **String Literal**              | \`"(?:\\.                                                         | \[^"\\])\*"\`      | Magenta |    |      |       |     |        |        |       |              |                |    |    |    |              |            |              |
+| **Char Literal**                | \`'(?:\\.                                                         | \[^'\\])\*'\`      | Magenta |    |      |       |     |        |        |       |              |                |    |    |    |              |            |              |
+| **Ondalık Sayılar**             | `\b[0-9]+(?:\.[0-9]*)?(?:[eE][+-]?[0-9]+)?\b`                     | Mavi               |         |    |      |       |     |        |        |       |              |                |    |    |    |              |            |              |
+| **Onaltılık Sayılar**           | `\b0[xX][0-9A-Fa-f]+\b`                                           | Mavi               |         |    |      |       |     |        |        |       |              |                |    |    |    |              |            |              |
+| **Operatörler**                 | \`(?:==                                                           | !=                 | <=      | >= | ++   | --    | +=  | -=     | \*=    | /=    | &&           | \|\|           | << | >> | -> | \[+-\*/%<>&^ | =\~!?:])\` | Koyu Turuncu |
+| **Ayraçlar**                    | `[;,()\[\]\{\}]`                                                  | Koyu Turuncu       |         |    |      |       |     |        |        |       |              |                |    |    |    |              |            |              |
+```
+

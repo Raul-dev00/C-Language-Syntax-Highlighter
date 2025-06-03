@@ -32,27 +32,14 @@ Bu proje, C dilinde yazılmış kaynak kodunu gerçek zamanlı olarak analiz ede
   2. **Gerçek Zamanlı Vurgulama**
      - Düzenleyicide metin her değiştiğinde, sözdizimi vurgulaması otomatik güncellenir.
      - Anahtar kelimeler kırmızı, sayılar mavi, metinler magenta, operatörler turuncu, yorumlar yeşil italik şeklinde gösterilir.
- 3.  **Status Bar (Hata Mesajı)**
+  3. **Status Bar (Hata Mesajı)**
      - Kodda sözdizimi hatası varsa, alt kısımdaki status bar kırmızı uyarı mesajı görüntüler.
      - Hata mesajı “Line X, Col Y: Missing ‘;’” gibi formatta bilgi verir.
      - Hata yoksa “No syntax errors” mesajı çıkar.
   4. **Token Listesi (Lexical Analiz)**
      - Kodun token’larını görmek isterseniz, parseTree.py’daki tokenize fonksiyonunu doğrudan kullanın.
-     - Örneğin, main.py içinde aşağıdaki satırı ekleyerek token listesi konsola yazdırılabilir: print(tokenize(code))
-
-# Örnek Kod
-
-int topla(int a, int b) {
-    return a + b;
-}
-
-int main() {
-    int x = 10;
-    int y = 20;
-    int sonuc = topla(x, y);
-    printf("Sonuc: %d\n", sonuc);
-    return 0;
-}
+     - Örneğin, main.py içinde aşağıdaki satırı ekleyerek token listesi konsola yazdırılabilir:
+     - `print(tokenize(code))`
 
 # Proje Yapısı
 
@@ -68,3 +55,21 @@ Project-PD/
 ├── uygulama_arayuz.py          # PyQt5 Designer ile oluşturulmuş UI tanımı
 │
 └── uygulama_arayuz_kod.py      # UI mantığı, CSyntaxHighlighter, tokenize & parse entegrasyonu
+
+
+# Örnek Kod
+```
+int topla(int a, int b) {
+    return a + b;
+}
+
+int main() {
+    int x = 10;
+    int y = 20;
+    int sonuc = topla(x, y);
+    printf("Sonuc: %d\n", sonuc);
+    return 0;
+}
+```
+
+# Proje Videosu

@@ -68,3 +68,6 @@ int main() {
 ```
 
 # Proje Videosu
+
+# Proje Makalesi
+https://medium.com/@cnamazzade/c-language-syntax-highlighter-with-pyqt5-d5ee6756f163
